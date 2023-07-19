@@ -1,47 +1,33 @@
 import http from 'node:http'
+import { json } from './middlewares/json.js'
+import { routes } from './routes.js'
+import { extractQueryParams } from './utils/extract-query-params.js'
 
-// - criar usuários
-// - listar usuários
-// - Edição de usuário
-// - Remoção de usuário
+// Query Parameters: URL Stateful => filtros, paginação
+// Route Parameters: URL Stateless => identificar recursos
+// Request Body: Envio de informações de um formulário
 
-// - HTTP
-//    - métodos HTTP
-//    - url
-
-//cabecalhos (Requisição/resposta) => metadados
-
-// HTTP Status code
-const users = []
-
+// GET http://localhost:3333/users?search=Diego
+// PUT http://localhost:3333/users/1
+// POST http://localhost:3333/users
 const server = http.createServer( async (req, res) => {
     const { method, url } = req
 
-    const buffers = []
+    await json(req, res)
+    
+    const route = routes.find(route => {
+        return route.method === method && route.path.test(url)
+    })
 
-    for await (const chunk of req) {
-        buffers.push(chunk)
-    }
+    if (route) {
+        const routeParams = req.url.match(route.path)
 
-    try {
-        req.body =JSON.parse(Buffer.concat(buffers).toString())
-    } catch {
-        req.body = null
-    }
+        const { query, ...params } = routeParams.groups
 
-    if (method === 'GET' && url === '/users') {
-        return res
-        .setHeader('Content-Type', 'application/json')
-        .end(JSON.stringify(users))
-    }
-
-    if (method === 'POST' && url === '/users') {
-        const { name, email } = req.body
-        users.push({
-            name,
-            email
-        })
-        return res.writeHead(201).end()
+        req.params = params
+        req.query = query? extractQueryParams(query) : {}
+       
+        return route.handler(req, res)
     }
 
     return res.write(404).end()
